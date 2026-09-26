@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/utils/madad_messenger.dart';
 import '../../core/widgets/madad_message_view.dart';
@@ -15,8 +16,8 @@ class FavoritesPage extends StatelessWidget {
     final scope = MadadScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('المفضلة')),
-      body: ListenableBuilder(
-        listenable: scope.favorites,
+      body: MadadBuilder(
+        cubits: [scope.favorites],
         builder: (context, _) {
           final products = [
             for (final id in scope.favorites.ids)

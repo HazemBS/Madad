@@ -1,8 +1,11 @@
-enum AppEnvironment { demo, production }
+import 'supabase_config.dart';
 
-/// البناء الافتراضي للعرض يعمل محليًا بالكامل.
+enum AppEnvironment { demo, connected }
+
+/// وضع التجربة يُفعَّل عند غياب إعداد Supabase، لا بعلم محفوظ على الجهاز.
 abstract final class AppConfig {
-  static const environment = AppEnvironment.demo;
+  static bool get isDemo => !SupabaseConfig.isConfigured;
 
-  static bool get isDemo => environment == AppEnvironment.demo;
+  static AppEnvironment get environment =>
+      isDemo ? AppEnvironment.demo : AppEnvironment.connected;
 }

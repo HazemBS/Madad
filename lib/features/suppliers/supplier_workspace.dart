@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import 'add_product_page.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
@@ -38,8 +39,8 @@ class SupplierHomePage extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     return Scaffold(
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: scope.catalog,
+        child: MadadBuilder(
+          listenables: [scope.catalog],
           builder: (context, _) {
             final products = scope.catalog.bySupplier(supplier.id);
             final orders = _ordersFor(scope, supplier.id);
@@ -119,8 +120,8 @@ class SupplierProductsPage extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('إضافة منتج جديد'),
       ),
-      body: ListenableBuilder(
-        listenable: scope.catalog,
+      body: MadadBuilder(
+        listenables: [scope.catalog],
         builder: (context, _) {
           final products = supplierId == null
               ? const <Product>[]
@@ -154,8 +155,8 @@ class SupplierOrdersPage extends StatelessWidget {
     final scope = MadadScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('الطلبات الواردة')),
-      body: ListenableBuilder(
-        listenable: scope.orders,
+      body: MadadBuilder(
+        cubits: [scope.orders],
         builder: (context, _) {
           final supplierId = scope.session.supplierId;
           final orders = supplierId == null

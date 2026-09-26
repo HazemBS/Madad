@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/utils/formatters.dart';
@@ -9,7 +10,7 @@ import '../../core/widgets/madad_message_view.dart';
 import '../../core/widgets/price_label.dart';
 import '../../core/widgets/product_photo.dart';
 import '../../core/widgets/quantity_stepper.dart';
-import '../../features/cart/cart_controller.dart';
+import 'cart_cubit.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
@@ -17,8 +18,8 @@ class CartPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = MadadScope.of(context).cart;
-    return ListenableBuilder(
-      listenable: cart,
+    return MadadBuilder(
+      cubits: [cart],
       builder: (context, _) {
         return Scaffold(
           appBar: AppBar(title: const Text('سلة المشتريات')),
@@ -115,7 +116,7 @@ class CartPage extends StatelessWidget {
 class _Summary extends StatelessWidget {
   const _Summary({required this.cart});
 
-  final CartController cart;
+  final CartCubit cart;
 
   @override
   Widget build(BuildContext context) {

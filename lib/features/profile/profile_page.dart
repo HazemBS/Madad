@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 
@@ -12,8 +13,8 @@ class ProfilePage extends StatelessWidget {
     final scope = MadadScope.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('حسابي')),
-      body: ListenableBuilder(
-        listenable: scope.session,
+      body: MadadBuilder(
+        cubits: [scope.session],
         builder: (context, _) {
           final profile = scope.session.profile;
           if (profile == null) {
@@ -78,14 +79,15 @@ class ProfilePage extends StatelessWidget {
                 child: OutlinedButton(
                   key: const ValueKey('logout'),
                   onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    scope.shell.goTo(0);
                     await scope.session.logout();
-                    if (!context.mounted) return;
                     scope.cart.clear();
                     scope.favorites.clear();
-                    scope.shell.goTo(0);
-                    Navigator.of(
-                      context,
-                    ).pushNamedAndRemoveUntil(AppRoutes.login, (_) => false);
+                    navigator.pushNamedAndRemoveUntil(
+                      AppRoutes.login,
+                      (_) => false,
+                    );
                   },
                   child: const Text('تسجيل الخروج'),
                 ),

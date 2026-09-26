@@ -5,7 +5,7 @@ import '../../core/constants/app_routes.dart';
 import '../../core/constants/madad_brand.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/widgets/madad_logo.dart';
-import 'session_controller.dart';
+import 'session_cubit.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -54,7 +54,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'تعذر تسجيل الدخول. تحقق من الاتصال ثم أعد المحاولة.';
+        _error = 'تعذر تسجيل الدخول. أعد المحاولة.';
       });
       return;
     }
@@ -67,6 +67,9 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!MadadScope.of(context).demoMode) {
+      return const ConnectedLoginPage();
+    }
     final theme = Theme.of(context).textTheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
@@ -108,6 +111,18 @@ class _LoginPageState extends State<LoginPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            if (MadadScope.of(context).demoMode) ...[
+                              Text(
+                                MadadScope.of(context).startupNote ??
+                                    'وضع التجربة المحلي: البيانات على هذا الجهاز فقط.',
+                                key: const ValueKey('demo-mode-banner'),
+                                textAlign: TextAlign.center,
+                                style: theme.bodySmall?.copyWith(
+                                  color: MadadColors.teal,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             Text('تسجيل الدخول', style: theme.headlineSmall),
                             const SizedBox(height: 8),
                             Text(
@@ -240,6 +255,303 @@ class _LoginFooter extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class ConnectedLoginPage extends StatefulWidget {
+  const ConnectedLoginPage({super.key});
+
+  @override
+  State<ConnectedLoginPage> createState() => _ConnectedLoginPageState();
+}
+
+class _ConnectedLoginPageState extends State<ConnectedLoginPage> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _business = TextEditingController();
+  final _owner = TextEditingController();
+  final _phone = TextEditingController();
+  final _city = TextEditingController(text: 'الرياض');
+  final _address = TextEditingController();
+  var _registering = false;
+  var _busy = false;
+  var _supplier = false;
+  String? _error;
+  String? _notice;
+
+  static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+  static final _phonePattern = RegExp(r'^05\d{8}$');
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    _business.dispose();
+    _owner.dispose();
+    _phone.dispose();
+    _city.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    final email = _email.text.trim();
+    final password = _password.text;
+    if (!_emailPattern.hasMatch(email)) {
+      setState(() => _error = 'اكتب بريدًا إلكترونيًا صالحًا.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() => _error = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.');
+      return;
+    }
+    if (_registering) {
+      if (_business.text.trim().isEmpty || _owner.text.trim().isEmpty) {
+        setState(() => _error = 'اكتب اسم المنشأة واسم المسؤول.');
+        return;
+      }
+      if (!_phonePattern.hasMatch(_phone.text.trim())) {
+        setState(() => _error = 'اكتب رقم جوال سعودي من 10 أرقام يبدأ بـ 05.');
+        return;
+      }
+      if (_city.text.trim().isEmpty || _address.text.trim().isEmpty) {
+        setState(() => _error = 'اكتب المدينة وعنوان التوصيل.');
+        return;
+      }
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final scope = MadadScope.of(context);
+    final ok = _registering
+        ? await scope.session.register(
+            email: email,
+            password: password,
+            role: _supplier ? AccountRole.supplier : AccountRole.shop,
+            businessName: _business.text.trim(),
+            ownerName: _owner.text.trim(),
+            phone: _phone.text.trim(),
+            city: _city.text.trim(),
+            address: _address.text.trim(),
+          )
+        : await scope.session.signInWithEmail(email: email, password: password);
+    if (!mounted) return;
+    if (!ok) {
+      final confirm = scope.session.state.status == AuthStatus.confirmEmail;
+      setState(() {
+        _busy = false;
+        if (confirm) {
+          _registering = false;
+          _error = null;
+          _notice =
+              scope.session.state.message ??
+              'أُنشئ الحساب. أكّد البريد الإلكتروني ثم سجّل الدخول.';
+          _password.clear();
+          _business.clear();
+          _owner.clear();
+          _phone.clear();
+          _address.clear();
+          _city.text = 'الرياض';
+          _supplier = false;
+        } else {
+          _notice = null;
+          _error = scope.session.state.message ?? 'تعذر إكمال العملية.';
+        }
+      });
+      return;
+    }
+    await scope.catalog.refresh();
+    try {
+      await scope.orders.refresh();
+      await scope.favorites.refresh();
+    } catch (_) {}
+    if (!mounted) return;
+    scope.shell.goTo(0);
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.shell, (_) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context).textTheme;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    return Scaffold(
+      backgroundColor: MadadColors.navy,
+      body: Column(
+        children: [
+          const SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20, 28, 20, 16),
+              child: MadadLogo(light: true),
+            ),
+          ),
+          Expanded(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: MadadColors.sand,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(20, 24, 20, 16 + bottomInset),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: (constraints.maxHeight - 40 - bottomInset)
+                            .clamp(0, double.infinity),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            _registering ? 'إنشاء حساب' : 'تسجيل الدخول',
+                            style: theme.headlineSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'الدخول بالبريد وكلمة المرور. رقم الجوال يُحفظ في ملف المنشأة ولا يُستخدم كبريد.',
+                            style: theme.bodyMedium?.copyWith(
+                              color: MadadColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            key: const ValueKey('auth-email'),
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            textDirection: TextDirection.ltr,
+                            decoration: const InputDecoration(
+                              labelText: 'البريد الإلكتروني',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            key: const ValueKey('auth-password'),
+                            controller: _password,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'كلمة المرور',
+                            ),
+                          ),
+                          if (_registering) ...[
+                            const SizedBox(height: 12),
+                            SegmentedButton<bool>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: false,
+                                  label: Text('متجر'),
+                                ),
+                                ButtonSegment(value: true, label: Text('مورد')),
+                              ],
+                              selected: {_supplier},
+                              onSelectionChanged: (value) {
+                                setState(() => _supplier = value.first);
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _business,
+                              decoration: const InputDecoration(
+                                labelText: 'اسم المنشأة',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _owner,
+                              decoration: const InputDecoration(
+                                labelText: 'اسم المسؤول',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _phone,
+                              keyboardType: TextInputType.phone,
+                              textDirection: TextDirection.ltr,
+                              decoration: const InputDecoration(
+                                labelText: 'جوال المنشأة',
+                                hintText: '05xxxxxxxx',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _city,
+                              decoration: const InputDecoration(
+                                labelText: 'المدينة',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _address,
+                              decoration: const InputDecoration(
+                                labelText: 'العنوان',
+                              ),
+                            ),
+                          ],
+                          if (_notice != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              _notice!,
+                              key: const ValueKey('auth-notice'),
+                              style: theme.bodyMedium?.copyWith(
+                                color: MadadColors.teal,
+                              ),
+                            ),
+                          ],
+                          if (_error != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              _error!,
+                              key: const ValueKey('auth-error'),
+                              style: theme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            key: const ValueKey('auth-submit'),
+                            onPressed: _busy ? null : _submit,
+                            child: _busy
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                      color: MadadColors.white,
+                                    ),
+                                  )
+                                : Text(_registering ? 'إنشاء الحساب' : 'دخول'),
+                          ),
+                          TextButton(
+                            key: const ValueKey('auth-toggle-register'),
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() {
+                                    _registering = !_registering;
+                                    _error = null;
+                                    _notice = null;
+                                  }),
+                            child: Text(
+                              _registering
+                                  ? 'لدي حساب بالفعل'
+                                  : 'إنشاء حساب جديد',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

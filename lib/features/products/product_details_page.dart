@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/utils/madad_messenger.dart';
@@ -128,55 +129,56 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: ListenableBuilder(
-              listenable: scope.favorites,
+            child: MadadBuilder(
+              cubits: [scope.favorites],
               builder: (context, _) {
                 final saved = scope.favorites.contains(product.id);
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
+                return Row(
                   children: [
-                    Row(
-                      children: [
-                        Text('الكمية', style: theme.titleSmall),
-                        const SizedBox(width: 8),
-                        QuantityStepper(
-                          value: _quantity ?? product.minOrder,
-                          min: product.minOrder,
-                          max: product.stock,
-                          compact: true,
-                          onChanged: (value) =>
-                              setState(() => _quantity = value),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: saved
-                              ? 'محفوظ في المفضلة'
-                              : 'إضافة إلى المفضلة',
-                          onPressed: () async {
-                            final added = await scope.favorites.toggle(
-                              product.id,
-                            );
-                            if (!context.mounted) return;
-                            showMadadMessage(
-                              context,
-                              added
-                                  ? 'حُفظ المنتج في المفضلة'
-                                  : 'أُزيل المنتج من المفضلة',
-                            );
-                          },
-                          icon: Icon(
-                            saved ? Icons.favorite : Icons.favorite_border,
-                            color: MadadColors.teal,
-                          ),
-                        ),
-                      ],
+                    Text('الكمية', style: theme.titleSmall),
+                    const SizedBox(width: 8),
+                    QuantityStepper(
+                      value: _quantity ?? product.minOrder,
+                      min: product.minOrder,
+                      max: product.stock,
+                      compact: true,
+                      onChanged: (value) => setState(() => _quantity = value),
                     ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
+                    const Spacer(),
+                    IconButton(
+                      tooltip: saved ? 'محفوظ في المفضلة' : 'إضافة إلى المفضلة',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        try {
+                          final added = await scope.favorites.toggle(
+                            product.id,
+                          );
+                          if (!context.mounted) return;
+                          showMadadMessage(
+                            context,
+                            added
+                                ? 'حُفظ المنتج في المفضلة'
+                                : 'أُزيل المنتج من المفضلة',
+                          );
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          showMadadMessage(context, '$error');
+                        }
+                      },
+                      icon: Icon(
+                        saved ? Icons.favorite : Icons.favorite_border,
+                        color: MadadColors.teal,
+                      ),
+                    ),
+                    Material(
+                      color: product.inStock
+                          ? MadadColors.teal
+                          : MadadColors.teal.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(10),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
                         key: const ValueKey('add-to-cart'),
-                        onPressed: product.inStock
+                        onTap: product.inStock
                             ? () {
                                 final notice = scope.cart.add(
                                   product,
@@ -188,8 +190,32 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                                 );
                               }
                             : null,
-                        icon: const Icon(Icons.add_shopping_cart_outlined),
-                        label: const Text('إضافة إلى السلة'),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(
+                            height: 34,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.add_shopping_cart_outlined,
+                                  color: MadadColors.white,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'إضافة إلى السلة',
+                                  style: TextStyle(
+                                    color: MadadColors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],

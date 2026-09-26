@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app/madad_scope.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../data/models/product.dart';
+import '../../data/remote/madad_store.dart';
 
 class AddProductPage extends StatefulWidget {
   const AddProductPage({super.key, required this.supplierId});
@@ -35,7 +36,7 @@ class _AddProductPageState extends State<AddProductPage> {
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_saving) return;
     final scope = MadadScope.of(context);
     final name = _name.text.trim();
@@ -69,18 +70,50 @@ class _AddProductPageState extends State<AddProductPage> {
       _error = null;
     });
     final description = _description.text.trim().isEmpty
-        ? 'منتج أضافه المورد في العرض المحلي.'
+        ? (scope.demoMode
+              ? 'منتج أضافه المورد في العرض المحلي.'
+              : 'منتج أضافه المورد.')
         : _description.text.trim();
-    scope.catalog.addProduct(
-      supplierId: widget.supplierId,
-      name: name,
-      description: description,
-      wholesalePrice: price,
-      unit: _unit,
-      minOrder: minOrder,
-      stock: stock,
-      categoryId: categoryId,
-    );
+    try {
+      if (scope.demoMode) {
+        scope.catalog.addProduct(
+          supplierId: widget.supplierId,
+          name: name,
+          description: description,
+          wholesalePrice: price,
+          unit: _unit,
+          minOrder: minOrder,
+          stock: stock,
+          categoryId: categoryId,
+        );
+      } else {
+        final product = await scope.commerce.createProduct(
+          supplierId: widget.supplierId,
+          name: name,
+          description: description,
+          wholesalePrice: price,
+          unit: _unit,
+          minOrder: minOrder,
+          stock: stock,
+          categoryId: categoryId,
+        );
+        scope.catalog.insertProduct(product);
+      }
+    } on MadadAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = error.message;
+      });
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'تعذر حفظ المنتج. تحقق من الاتصال ثم أعد المحاولة.';
+      });
+      return;
+    }
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
@@ -91,7 +124,8 @@ class _AddProductPageState extends State<AddProductPage> {
 
   @override
   Widget build(BuildContext context) {
-    final catalog = MadadScope.of(context).catalog;
+    final scope = MadadScope.of(context);
+    final catalog = scope.catalog;
     final categories = catalog.categories();
     final categoryId = _categoryId ?? categories.firstOrNull?.id;
     final theme = Theme.of(context).textTheme;
@@ -101,7 +135,9 @@ class _AddProductPageState extends State<AddProductPage> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           Text(
-            'يُحفظ المنتج على هذا الجهاز ضمن العرض، ويظهر للمتاجر بعد إضافته.',
+            scope.demoMode
+                ? 'يُحفظ المنتج على هذا الجهاز ضمن وضع التجربة.'
+                : 'يُحفظ المنتج في حسابك على الخادم. رفع الصور غير متاح الآن، وتظهر أيقونة التصنيف.',
             style: theme.bodyMedium,
           ),
           const SizedBox(height: 16),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/utils/formatters.dart';
@@ -18,8 +19,8 @@ class OrdersPage extends StatelessWidget {
     final orders = MadadScope.of(context).orders;
     return Scaffold(
       appBar: AppBar(title: const Text('طلباتي')),
-      body: ListenableBuilder(
-        listenable: orders,
+      body: MadadBuilder(
+        cubits: [orders],
         builder: (context, _) {
           if (orders.orders.isEmpty) {
             return const MadadMessageView(

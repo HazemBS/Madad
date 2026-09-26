@@ -29,11 +29,17 @@ class _SplashPageState extends State<SplashPage> {
     await Future<void>.delayed(delay);
     if (!mounted) return;
     final scope = MadadScope.of(context);
+    if (!scope.demoMode) {
+      await scope.catalog.refresh();
+    }
+    if (!mounted) return;
     final restored = await scope.session.restore();
     if (!mounted) return;
     if (restored) {
-      await scope.orders.refresh();
-      await scope.favorites.refresh();
+      try {
+        await scope.orders.refresh();
+        await scope.favorites.refresh();
+      } catch (_) {}
       if (!mounted) return;
       Navigator.of(
         context,
@@ -85,6 +91,16 @@ class _SplashPageState extends State<SplashPage> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (MadadScope.of(context).demoMode) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    MadadScope.of(context).startupNote ??
+                        'وضع التجربة المحلي: البيانات على هذا الجهاز فقط.',
+                    key: const ValueKey('demo-mode-banner'),
+                    textAlign: TextAlign.center,
+                    style: theme.bodySmall?.copyWith(color: MadadColors.sand),
+                  ),
+                ],
               ],
             ),
           ),

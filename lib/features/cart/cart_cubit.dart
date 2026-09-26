@@ -1,15 +1,24 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/storage/local_store.dart';
 import '../../data/models/cart_item.dart';
 import '../../data/models/product.dart';
 
-class CartController extends ChangeNotifier {
+class CartCubit extends Cubit<List<CartItem>> {
+  CartCubit({LocalStore? store}) : _store = store, super(const []) {
+    final saved = store?.readCart() ?? const <CartItem>[];
+    if (saved.isEmpty) return;
+    _items.addAll(saved);
+    emit(List.unmodifiable(List<CartItem>.of(_items)));
+  }
+
   static const double flatDeliveryFee = 25;
   static const double freeDeliveryFrom = 500;
 
+  final LocalStore? _store;
   final List<CartItem> _items = [];
 
-  List<CartItem> get items => List.unmodifiable(_items);
+  List<CartItem> get items => state;
 
   int get count => _items.fold(0, (sum, item) => sum + item.quantity);
 
@@ -49,7 +58,7 @@ class CartController extends ChangeNotifier {
     } else {
       _items[index] = _items[index].copyWith(quantity: current + qty);
     }
-    notifyListeners();
+    _publish();
     return notice;
   }
 
@@ -61,17 +70,22 @@ class CartController extends ChangeNotifier {
     if (next < product.minOrder) next = product.minOrder;
     if (next > product.stock) next = product.stock;
     _items[index] = _items[index].copyWith(quantity: next);
-    notifyListeners();
+    _publish();
   }
 
   void remove(String productId) {
     _items.removeWhere((item) => item.product.id == productId);
-    notifyListeners();
+    _publish();
   }
 
   void clear() {
     _items.clear();
-    notifyListeners();
+    _publish();
+  }
+
+  void _publish() {
+    emit(List.unmodifiable(List<CartItem>.of(_items)));
+    _store?.saveCart(_items);
   }
 
   int? _indexOf(String productId) {

@@ -29,6 +29,9 @@ screenshots/final_audit/network_sample.txt
 # Supabase CLI local link state
 supabase/.temp/
 
+# Local client defines for IDE debug. Never commit the anon key.
+dart_defines.json
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id

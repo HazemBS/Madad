@@ -38,4 +38,32 @@ class Product {
   final bool isPopular;
 
   bool get inStock => stock > 0;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'description': description,
+    'wholesalePrice': wholesalePrice,
+    'unit': unit.name,
+    'minOrder': minOrder,
+    'stock': stock,
+    'supplierId': supplierId,
+    'categoryId': categoryId,
+    'isPopular': isPopular,
+  };
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String? ?? '',
+      wholesalePrice: (json['wholesalePrice'] as num).toDouble(),
+      unit: ProductUnit.values.byName(json['unit'] as String),
+      minOrder: json['minOrder'] as int,
+      stock: json['stock'] as int,
+      supplierId: json['supplierId'] as String,
+      categoryId: json['categoryId'] as String,
+      isPopular: json['isPopular'] as bool? ?? false,
+    );
+  }
 }

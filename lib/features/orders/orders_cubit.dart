@@ -1,20 +1,44 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/storage/local_store.dart';
 import '../../data/models/cart_item.dart';
 import '../../data/models/order.dart';
-import '../cart/cart_controller.dart';
+import '../../data/models/order_line_request.dart';
 import '../../data/repositories/catalog_repository.dart';
+import '../../data/repositories/commerce_repository.dart';
+import '../cart/cart_cubit.dart';
 
-class OrdersController extends ChangeNotifier {
-  OrdersController({required CatalogRepository catalog}) : _catalog = catalog {
-    _seed();
+class OrdersCubit extends Cubit<List<Order>> {
+  OrdersCubit({
+    required CatalogRepository catalog,
+    LocalStore? store,
+    CommerceRepository? remote,
+  }) : _catalog = catalog,
+       _store = store,
+       _remote = remote != null && remote.usesRemoteAuth ? remote : null,
+       super(const []) {
+    final saved = store?.readOrders();
+    if (_remote != null) {
+      if (saved != null) {
+        _orders.addAll(saved);
+        _sequence = _highestSequence(saved);
+      }
+    } else if (saved == null) {
+      _seed();
+    } else {
+      _orders.addAll(saved);
+      _sequence = _highestSequence(saved);
+    }
+    emit(List.unmodifiable(List<Order>.of(_orders)));
   }
 
   final CatalogRepository _catalog;
+  final LocalStore? _store;
+  final CommerceRepository? _remote;
   final List<Order> _orders = [];
   int _sequence = 1048;
 
-  List<Order> get orders => List.unmodifiable(_orders);
+  List<Order> get orders => state;
 
   List<Order> get current =>
       _orders.where((order) => order.status.isCurrent).toList();
@@ -29,7 +53,15 @@ class OrdersController extends ChangeNotifier {
     return null;
   }
 
-  Future<void> refresh() async {}
+  Future<void> refresh() async {
+    final remote = _remote;
+    if (remote == null) return;
+    final orders = await remote.loadOrders();
+    _orders
+      ..clear()
+      ..addAll(orders);
+    _publish();
+  }
 
   Future<Order> placeOrder({
     required List<CartItem> items,
@@ -37,6 +69,27 @@ class OrdersController extends ChangeNotifier {
     required PaymentMethod paymentMethod,
     required String notes,
   }) async {
+    final remote = _remote;
+    if (remote != null) {
+      if (items.isEmpty) {
+        throw ArgumentError('لا يمكن إنشاء طلب من سلة فارغة');
+      }
+      final order = await remote.createOrder(
+        lines: [
+          for (final item in items)
+            OrderLineRequest(
+              productId: item.product.id,
+              quantity: item.quantity,
+            ),
+        ],
+        address: address,
+        paymentMethod: paymentMethod,
+        notes: notes.trim(),
+      );
+      _orders.insert(0, order);
+      _publish();
+      return order;
+    }
     if (items.isEmpty) {
       throw ArgumentError.value(
         items,
@@ -66,19 +119,33 @@ class OrdersController extends ChangeNotifier {
       ],
     );
     _orders.insert(0, order);
-    notifyListeners();
+    _publish();
     return order;
   }
 
   double _deliveryFeeFor(List<CartItem> items) {
     final subtotal = items.fold<double>(0, (sum, item) => sum + item.lineTotal);
-    if (subtotal >= CartController.freeDeliveryFrom) return 0;
-    return CartController.flatDeliveryFee;
+    if (subtotal >= CartCubit.freeDeliveryFrom) return 0;
+    return CartCubit.flatDeliveryFee;
   }
 
   String _nextId() {
     _sequence += 1;
     return 'MD-$_sequence';
+  }
+
+  int _highestSequence(List<Order> orders) {
+    var highest = _sequence;
+    for (final order in orders) {
+      final number = int.tryParse(order.id.replaceFirst('MD-', ''));
+      if (number != null && number > highest) highest = number;
+    }
+    return highest;
+  }
+
+  void _publish() {
+    emit(List.unmodifiable(List<Order>.of(_orders)));
+    _store?.saveOrders(_orders);
   }
 
   void _seed() {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/utils/madad_messenger.dart';
@@ -52,8 +53,8 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context).textTheme;
     return Scaffold(
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: scope.session,
+        child: MadadBuilder(
+          cubits: [scope.session],
           builder: (context, _) {
             final profile = scope.session.profile;
             final popular = scope.catalog.popular();
@@ -61,6 +62,16 @@ class _HomePageState extends State<HomePage> {
               key: const ValueKey('home-scroll'),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
+                if (scope.catalog.loadError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      scope.catalog.loadError!,
+                      style: theme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
                 Row(
                   children: [
                     Expanded(
@@ -200,8 +211,8 @@ class _CartButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = MadadScope.of(context).cart;
-    return ListenableBuilder(
-      listenable: cart,
+    return MadadBuilder(
+      cubits: [cart],
       builder: (context, _) {
         return Badge(
           isLabelVisible: cart.count > 0,

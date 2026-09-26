@@ -1,22 +1,57 @@
-// ملف إنتاج معزول. نقطة تشغيل العرض في main.dart لا تستورده ولا تنفّذه.
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/config/supabase_config.dart';
 import '../models/business_profile.dart';
-import '../models/cart_item.dart';
 import '../models/category.dart';
 import '../models/order.dart';
+import '../models/order_line_request.dart';
 import '../models/product.dart';
 import '../models/supplier.dart';
 import '../repositories/catalog_repository.dart';
 
+String arabicAuthMessage(String raw) {
+  if (RegExp(r'[\u0600-\u06FF]').hasMatch(raw)) return raw;
+  final text = raw.toLowerCase();
+  if (text.contains('invalid login') || text.contains('invalid credentials')) {
+    return 'البريد أو كلمة المرور غير صحيحة.';
+  }
+  if (text.contains('already registered') ||
+      text.contains('already been registered')) {
+    return 'هذا البريد مسجّل من قبل.';
+  }
+  if (text.contains('email not confirmed')) {
+    return 'أكّد البريد الإلكتروني ثم سجّل الدخول.';
+  }
+  if (text.contains('password')) {
+    return 'كلمة المرور غير مقبولة. استخدم 8 أحرف على الأقل.';
+  }
+  if (text.contains('row-level') ||
+      text.contains('permission') ||
+      text.contains('42501')) {
+    return 'ليست لديك صلاحية لهذه العملية.';
+  }
+  return 'تعذر إكمال العملية. تحقق من البيانات ثم أعد المحاولة.';
+}
+
 class MadadAuthException implements Exception {
-  MadadAuthException(this.message);
+  MadadAuthException(this.message, {this.emailConfirmation = false});
 
   final String message;
+  final bool emailConfirmation;
 
   @override
   String toString() => message;
+}
+
+class RemoteAccount {
+  const RemoteAccount({
+    required this.profile,
+    required this.role,
+    required this.supplierId,
+  });
+
+  final BusinessProfile profile;
+  final String role;
+  final String? supplierId;
 }
 
 class MadadStore {
@@ -25,6 +60,11 @@ class MadadStore {
   final SupabaseClient client;
 
   bool get hasSession => client.auth.currentSession != null;
+
+  Future<CatalogSnapshot> loadCatalogSnapshot() async {
+    final catalog = await loadCatalog();
+    return catalog.snapshot();
+  }
 
   Future<CatalogRepository> loadCatalog() async {
     final categoriesRows = await client.from('categories').select();
@@ -77,32 +117,145 @@ class MadadStore {
     );
   }
 
-  Future<void> signInDemo() async {
-    await client.auth.signInWithPassword(
-      email: SupabaseConfig.demoEmail,
-      password: SupabaseConfig.demoPassword,
-    );
-  }
-
   Future<void> signOut() => client.auth.signOut();
 
   Future<BusinessProfile> loadProfile() async {
-    final userId = client.auth.currentUser?.id;
-    if (userId == null) {
+    final account = await loadAccount();
+    if (account == null) {
       throw MadadAuthException('لا توجد جلسة دخول.');
     }
-    final row = await client
-        .from('profiles')
-        .select()
-        .eq('id', userId)
-        .single();
-    return BusinessProfile(
-      businessName: row['business_name'] as String,
-      ownerName: row['owner_name'] as String,
-      phone: row['phone'] as String,
-      city: row['city'] as String,
-      addresses: [row['address'] as String],
-    );
+    return account.profile;
+  }
+
+  Future<RemoteAccount?> loadAccount() async {
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return null;
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final row = await client
+            .from('profiles')
+            .select()
+            .eq('id', userId)
+            .single();
+        return RemoteAccount(
+          profile: BusinessProfile(
+            businessName: row['business_name'] as String,
+            ownerName: row['owner_name'] as String,
+            phone: row['phone'] as String,
+            city: row['city'] as String,
+            addresses: [row['address'] as String],
+          ),
+          role: row['role'] as String? ?? 'customer',
+          supplierId: row['supplier_id'] as String?,
+        );
+      } catch (error) {
+        lastError = error;
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+    }
+    throw MadadAuthException(arabicAuthMessage('$lastError'));
+  }
+
+  Future<RemoteAccount> signIn({
+    required String email,
+    required String password,
+  }) {
+    return _guard(() async {
+      await client.auth.signInWithPassword(email: email, password: password);
+      final account = await loadAccount();
+      if (account == null) {
+        throw MadadAuthException('تعذر قراءة ملف المنشأة بعد الدخول.');
+      }
+      return account;
+    });
+  }
+
+  Future<RemoteAccount> register({
+    required String email,
+    required String password,
+    required String role,
+    required String businessName,
+    required String ownerName,
+    required String phone,
+    required String city,
+    required String address,
+  }) {
+    return _guard(() async {
+      final response = await client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'role': role == 'supplier' ? 'supplier' : 'customer',
+          'business_name': businessName,
+          'owner_name': ownerName,
+          'phone': phone,
+          'city': city,
+          'address': address,
+        },
+      );
+      if (response.session == null) {
+        throw MadadAuthException(
+          'أُنشئ الحساب. أكّد البريد الإلكتروني ثم سجّل الدخول.',
+          emailConfirmation: true,
+        );
+      }
+      final account = await loadAccount();
+      if (account == null) {
+        throw MadadAuthException('تعذر قراءة ملف المنشأة بعد التسجيل.');
+      }
+      return account;
+    });
+  }
+
+  Future<Product> createProduct({
+    required String supplierId,
+    required String name,
+    required String description,
+    required double wholesalePrice,
+    required ProductUnit unit,
+    required int minOrder,
+    required int stock,
+    required String categoryId,
+  }) {
+    return _guard(() async {
+      final account = await loadAccount();
+      if (account == null || account.role != 'supplier') {
+        throw MadadAuthException('إضافة المنتجات متاحة لحساب المورد فقط.');
+      }
+      if (account.supplierId == null || account.supplierId != supplierId) {
+        throw MadadAuthException('لا يمكنك إضافة منتج إلا لمنشأتك.');
+      }
+      final id = 'sp-${DateTime.now().microsecondsSinceEpoch}';
+      await client.from('products').insert({
+        'id': id,
+        'name': name.trim(),
+        'description': description.trim(),
+        'wholesale_price': wholesalePrice,
+        'unit': unit.name,
+        'min_order': minOrder,
+        'stock': stock,
+        'supplier_id': supplierId,
+        'category_id': categoryId,
+        'is_popular': false,
+      });
+      await client.from('supplier_categories').upsert({
+        'supplier_id': supplierId,
+        'category_id': categoryId,
+      });
+      return Product(
+        id: id,
+        name: name.trim(),
+        description: description.trim(),
+        wholesalePrice: wholesalePrice,
+        unit: unit,
+        minOrder: minOrder,
+        stock: stock,
+        supplierId: supplierId,
+        categoryId: categoryId,
+        isPopular: false,
+      );
+    });
   }
 
   Future<List<String>> loadFavoriteIds() async {
@@ -141,47 +294,49 @@ class MadadStore {
     final rows = await client
         .from('orders')
         .select('*, order_items(*)')
-        .eq('user_id', userId)
         .order('created_at', ascending: false);
     return [for (final row in rows) _orderFromRow(row)];
   }
 
-  Future<Order> createOrder({
-    required List<CartItem> items,
+  Future<Order> createSecureOrder({
+    required List<OrderLineRequest> lines,
     required String address,
     required PaymentMethod paymentMethod,
     required String notes,
-    required double deliveryFee,
-    required String Function(String supplierId) supplierName,
-  }) async {
-    final userId = client.auth.currentUser?.id;
-    if (userId == null) {
-      throw MadadAuthException('سجّل الدخول قبل تأكيد الطلب.');
-    }
-    final orderId = await client.rpc('next_order_id') as String;
-    await client.from('orders').insert({
-      'id': orderId,
-      'user_id': userId,
-      'status': OrderStatus.created.name,
-      'address': address,
-      'payment_method': paymentMethod.name,
-      'notes': notes,
-      'delivery_fee': deliveryFee,
-    });
-    await client.from('order_items').insert([
-      for (final item in items)
-        {
-          'order_id': orderId,
-          'product_id': item.product.id,
-          'name': item.product.name,
-          'supplier_name': supplierName(item.product.supplierId),
-          'unit_label': item.product.unit.label,
-          'unit_price': item.product.wholesalePrice,
-          'quantity': item.quantity,
+  }) {
+    return _guard(() async {
+      if (client.auth.currentUser == null) {
+        throw MadadAuthException('سجّل الدخول قبل تأكيد الطلب.');
+      }
+      final raw = await client.rpc(
+        'create_secure_order',
+        params: {
+          'p_items': [
+            for (final line in lines)
+              {'product_id': line.productId, 'quantity': line.quantity},
+          ],
+          'p_address': address,
+          'p_payment_method': paymentMethod.name,
+          'p_notes': notes,
         },
-    ]);
-    final rows = await loadOrders();
-    return rows.firstWhere((order) => order.id == orderId);
+      );
+      if (raw is! Map) {
+        throw MadadAuthException('تعذر قراءة الطلب بعد إنشائه.');
+      }
+      return _orderFromRow(Map<String, dynamic>.from(raw));
+    });
+  }
+
+  Future<T> _guard<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on MadadAuthException {
+      rethrow;
+    } on AuthException catch (error) {
+      throw MadadAuthException(arabicAuthMessage(error.message));
+    } on PostgrestException catch (error) {
+      throw MadadAuthException(arabicAuthMessage(error.message));
+    }
   }
 
   Order _orderFromRow(Map<String, dynamic> row) {

@@ -104,6 +104,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('مورد'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('logout')));
+    await tester.pumpAndSettle();
+    expect(find.text('تسجيل الدخول'), findsOneWidget);
+    expect(find.byKey(const ValueKey('demo-login')), findsOneWidget);
+    expect(find.text('المفضلة'), findsNothing);
   });
 
   testWidgets('المورد يضيف منتجًا جديدًا ويظهر في منتجاته', (tester) async {

@@ -44,6 +44,26 @@ class OrderItem {
   final int quantity;
 
   double get lineTotal => unitPrice * quantity;
+
+  Map<String, dynamic> toJson() => {
+    'productId': productId,
+    'name': name,
+    'supplierName': supplierName,
+    'unitLabel': unitLabel,
+    'unitPrice': unitPrice,
+    'quantity': quantity,
+  };
+
+  factory OrderItem.fromJson(Map<String, dynamic> json) {
+    return OrderItem(
+      productId: json['productId'] as String,
+      name: json['name'] as String,
+      supplierName: json['supplierName'] as String,
+      unitLabel: json['unitLabel'] as String,
+      unitPrice: (json['unitPrice'] as num).toDouble(),
+      quantity: json['quantity'] as int,
+    );
+  }
 }
 
 class Order {
@@ -70,4 +90,33 @@ class Order {
   double get subtotal => items.fold(0, (sum, item) => sum + item.lineTotal);
 
   double get total => subtotal + deliveryFee;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'status': status.name,
+    'address': address,
+    'paymentMethod': paymentMethod.name,
+    'notes': notes,
+    'deliveryFee': deliveryFee,
+    'items': [for (final item in items) item.toJson()],
+  };
+
+  factory Order.fromJson(Map<String, dynamic> json) {
+    return Order(
+      id: json['id'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      status: OrderStatus.values.byName(json['status'] as String),
+      address: json['address'] as String,
+      paymentMethod: PaymentMethod.values.byName(
+        json['paymentMethod'] as String,
+      ),
+      notes: json['notes'] as String? ?? '',
+      deliveryFee: (json['deliveryFee'] as num).toDouble(),
+      items: [
+        for (final item in json['items'] as List<dynamic>)
+          OrderItem.fromJson(item as Map<String, dynamic>),
+      ],
+    );
+  }
 }

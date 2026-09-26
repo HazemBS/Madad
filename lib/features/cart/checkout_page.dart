@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../app/madad_scope.dart';
+import '../../core/widgets/madad_builder.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/madad_colors.dart';
 import '../../core/widgets/madad_message_view.dart';
 import '../../core/utils/madad_messenger.dart';
 import '../../core/widgets/price_label.dart';
 import '../../data/models/order.dart';
+import '../../data/remote/madad_store.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -45,12 +47,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         notes: _notes.text,
       );
       orderId = order.id;
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _submitting = false);
       showMadadMessage(
         context,
-        'تعذر حفظ الطلب. تحقق من الاتصال ثم أعد المحاولة.',
+        error is MadadAuthException
+            ? error.message
+            : 'تعذر حفظ الطلب. تحقق من الاتصال ثم أعد المحاولة.',
       );
       return;
     }
@@ -80,8 +84,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final theme = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('تأكيد الطلب')),
-      body: ListenableBuilder(
-        listenable: scope.cart,
+      body: MadadBuilder(
+        cubits: [scope.cart],
         builder: (context, _) {
           if (scope.cart.isEmpty) {
             return const MadadMessageView(
